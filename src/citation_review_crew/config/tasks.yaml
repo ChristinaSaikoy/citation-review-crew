@@ -1,0 +1,68 @@
+evidence_comparison_task:
+  description: >
+    Review the following citation package and extracted manuscript passages.
+    Only paragraphs containing citation markers [N] have been extracted,
+    grouped by chapter, along with the full reference list.
+
+    Citations (from Zotero or manual input):
+    {citations}
+
+    Extracted cited passages (by chapter) and reference list:
+    {inserted_content}
+
+    Perform a thorough review covering the following:
+
+    1. EVIDENCE COMPARISON: For every claim in the manuscript that cites a reference,
+       compare the claim against the cited reference. Mark each as:
+       - Supported: the reference fully supports the claim
+       - Partially supported: the reference covers the topic but the claim overstates,
+         generalizes, or slightly misrepresents the source
+       - Unsupported: the reference does not support the claim at all
+       - Unclear: cannot determine from available metadata whether the claim is supported
+
+    2. CITATION FORMAT CHECK: Verify every reference entry in the manuscript against
+       the required citation format standard. The format rules should be customized
+       in this file to match your institution's requirements. Example rules:
+
+       Books [M]: [N] Author. Title [M]. Edition, Place: Publisher, Year.
+       Journal articles [J]: [N] Author. Title [J]. Journal, Year, Volume(Issue): Pages.
+       Conference proceedings [C]: [N] Author. Title [C]. Place: Publisher, Year.
+       Dissertations [D]: [N] Author. Title [D]. Place: Institution, Year.
+       Electronic resources [EB/OL]: [N] Author. Title [EB/OL]. (Publish date) [Access date]. URL.
+
+       Flag any reference that: uses wrong document type code, missing required fields,
+       wrong punctuation or order, inconsistent numbering, or mixed formatting styles.
+
+    3. CROSS-REFERENCE RISKS: Identify places where the same claim is attributed to
+       the wrong reference, or where a survey/review paper is cited as primary evidence.
+
+    Use only the provided citation package as evidence.
+  expected_output: >
+    A structured evidence review with:
+    1) Claim-by-claim findings (supported / partially supported / unsupported / unclear)
+    2) Citation format violations list with the specific rule violated and correction
+    3) Cross-reference risks and overclaim warnings
+    4) Concrete revision guidance for each issue found
+  agent: review_coordinator
+
+review_report_task:
+  description: >
+    Turn the evidence comparison into a final markdown review report in Chinese.
+
+    The report MUST contain these sections in order:
+    1. Summary judgment (overall assessment)
+    2. Supported claims (with reference mapping)
+    3. Partially supported claims (with explanation of what is overstated)
+    4. Unsupported claims (with explanation of why unsupported)
+    5. Unclear claims (with what additional information is needed)
+    6. Citation format violations (table: entry, violation, corrected version)
+    7. Suggested edits (prioritized action items)
+
+    Write the entire report in Chinese. Use markdown formatting without code fences.
+    For each claim category, list the specific manuscript text and the corresponding
+    reference. For citation format violations, show the original entry and the
+    corrected entry side by side.
+  expected_output: >
+    A polished Chinese markdown report without code fences that the author can use
+    directly during manuscript revision. Must include all seven sections listed above.
+  agent: report_writer
