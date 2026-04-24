@@ -1,0 +1,11 @@
+.env
+__pycache__/
+.DS_Store
+*.docx
+.venv/
+.playwright-profile/
+report.md
+corrections.md
+OPTIMIZATION.md
+*.pyc
+db/
