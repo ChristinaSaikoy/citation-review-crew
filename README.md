@@ -1,105 +1,198 @@
 # Citation Review Crew
 
+[![CI](https://github.com/ChristinaSaikoy/citation-review-crew/actions/workflows/ci.yml/badge.svg)](https://github.com/ChristinaSaikoy/citation-review-crew/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/Python-3.10--3.13-blue.svg)](pyproject.toml)
+
 **English** | [中文](README_CN.md)
 
-A CrewAI-powered tool that automatically reviews academic paper citations for accuracy, identifies mismatched references, searches for correct replacements, and checks citation format compliance.
+A research-oriented pipeline for auditing manuscript citations, finding candidate replacement literature, and producing structured correction reports.
 
-## What It Does
+Instead of asking one LLM to read an entire manuscript and improvise replacements, Citation Review Crew separates deterministic preprocessing and academic search from agent-based verification.
 
-1. **Review Phase** (`crewai run`): Reads your manuscript (.docx) and reference metadata (Zotero API), then generates a review report identifying:
-   - Unsupported claims (reference doesn't match the claim)
-   - Author attribution errors
-   - Citation format violations
-   - Duplicate references
+## What / Why / Current Result
 
-2. **Fix Phase** (`uv run fix`): Takes the review report and automatically:
-   - Searches for correct replacement references via OpenAlex, Semantic Scholar, PubMed, and CrossRef APIs
-   - Verifies replacements using parallel AI agents
-   - Generates author name corrections
-   - Produces format compliance fixes
-   - Outputs an actionable correction checklist
+**What** — Extract citation-bearing passages from `.docx` manuscripts, compare them with reference metadata, search academic APIs for better sources, and generate an actionable correction report.
 
-## Architecture
+**Why** — Citation review is not just a text-generation problem. It requires traceable source retrieval, claim-to-reference matching, attribution checks, formatting checks, and explicit handling of uncertain replacements.
 
+**Current result** — The repository contains an end-to-end review/fix pipeline, Zotero integration, multi-source academic search, parallel verification flows, and offline-tested DOCX citation extraction. CI validates the offline core on Python 3.10–3.13.
+
+## Pipeline
+
+```text
+Manuscript (.docx) + Zotero / citation metadata
+                    |
+                    v
+        Citation-bearing passage extraction
+                    |
+                    v
+          Review Crew -> report.md
+                    |
+                    v
+      Parse unsupported / partial claims
+                    |
+                    v
+ Python pre-search across academic APIs
+                    |
+       +------------+------------+
+       |            |            |
+       v            v            v
+ Verify group 1  Verify group 2  Verify group 3
+       |            |            |
+       +------------+------------+
+                    |
+          +---------+---------+
+          |                   |
+          v                   v
+ Attribution correction   Format checking
+          |                   |
+          +---------+---------+
+                    |
+                    v
+             corrections.md
 ```
-Phase 1: Review (crewai run)
-  docx_reader ─── extract cited passages by chapter
-  zotero_tool ─── fetch reference metadata
-       └──> 2-Agent Crew (review + report) ──> report.md
 
-Phase 2: Fix (uv run fix)
-  ┌─────────────────────────────────────────────────┐
-  │          parse_and_presearch()                   │
-  │  Parse report.md ──> Python batch API search     │
-  │  (OpenAlex + Semantic Scholar, ~10 seconds)      │
-  └──────────┬──────────┬──────────┬────────────────┘
-   ┌─────────▼──┐ ┌─────▼──────┐ ┌▼─────────────┐
-   │ Group 1    │ │ Group 2    │ │ Group 3      │  3x parallel
-   │ Verify     │ │ Verify     │ │ Verify       │  verification
-   └──────┬─────┘ └─────┬──────┘ └──────┬───────┘
-   ┌──────▼───────────▼───────────────▼───────┐
-   │  + Crew B (author corrections)                │  parallel
-   │  + Crew C (format checks)                     │
-   └──────────────────┬─────────────────────────┘
-                      ▼
-              corrections.md
-```
+## Design Principles
 
-## Key Features
+- **Deterministic preprocessing first** — only citation-bearing manuscript passages are extracted before review.
+- **Search before generation** — replacement candidates come from academic search APIs rather than being invented by the model.
+- **Human-verifiable outputs** — candidate replacements include bibliographic information and can be marked `MANUAL_NEEDED` when confidence is insufficient.
+- **Failure isolation** — verification and correction branches are separated so one failed branch does not have to invalidate every output.
+- **Offline-testable core** — document parsing is tested without LLM credentials or network access.
 
-- **Smart Input Reduction**: Extracts only paragraphs with citation markers `[N]` from the manuscript, reducing input from ~87K to ~17K chars (5x compression)
-- **Multi-API Academic Search**: OpenAlex (primary, no rate limit) + Semantic Scholar (semantic matching) + PubMed (biomedical) + CrossRef (DOI lookup)
-- **Python Pre-search + AI Verification**: Batch searches via free APIs (~10 seconds), then AI agents verify matches in parallel (~2 minutes total vs 10+ minutes for pure AI search)
-- **Fault Tolerant**: Each crew runs in try/except - if one fails, others still produce output
-- **Zotero Integration**: Auto-imports replacement papers into your Zotero library with tags for easy filtering
+## Main Components
 
-## Setup
+| Component | Responsibility |
+|---|---|
+| `tools/docx_reader.py` | Extract citation-bearing paragraphs and reference sections from `.docx` manuscripts |
+| `tools/zotero_tool.py` | Load citation metadata from Zotero |
+| `tools/scholar_search.py` | Search academic literature sources |
+| `tools/presearch.py` | Parse unsupported claims and pre-search candidate replacements |
+| `crew.py` | Primary citation review crew |
+| `fix/flow.py` | Parallel replacement verification, attribution correction, format checking, and result merge |
+
+## Academic Search Sources
+
+The search layer supports multiple sources with different roles:
+
+- **OpenAlex** — broad scholarly metadata retrieval
+- **Semantic Scholar** — semantic paper search and metadata
+- **PubMed** — biomedical literature
+- **Crossref** — DOI and publication metadata lookup
+
+Replacement candidates are searched first and then passed to verification agents for claim-level matching.
+
+## Quick Start
+
+### 1. Clone and install
 
 ```bash
-uv tool install crewai
 git clone https://github.com/ChristinaSaikoy/citation-review-crew.git
 cd citation-review-crew
-cp .env.example .env  # Edit with your API keys
 uv sync
 ```
 
-### Required API Keys
+### 2. Configure credentials
 
-| Key | Source | Purpose |
-|-----|--------|---------|
-| `OPENAI_API_KEY` | Your LLM provider | AI agents |
-| `OPENAI_API_BASE` | Your LLM provider | API endpoint |
-| `ZOTERO_API_KEY` | [Zotero Settings](https://www.zotero.org/settings/keys) | Fetch references |
-| `ZOTERO_LIBRARY_ID` | Zotero Settings | Your library |
+```bash
+cp .env.example .env
+```
 
-## Usage
+Configure the providers you plan to use:
 
-### Step 1: Review
+| Variable | Purpose |
+|---|---|
+| `OPENAI_API_KEY` | LLM provider authentication |
+| `OPENAI_API_BASE` | Optional OpenAI-compatible API endpoint |
+| `OPENAI_MODEL_NAME` | Strong model used for reference verification |
+| `OPENAI_MODEL_NAME_LIGHT` | Lighter model used for auxiliary correction tasks |
+| `ZOTERO_API_KEY` | Zotero library access |
+| `ZOTERO_LIBRARY_ID` | Zotero library identifier |
 
-Place your `.docx` manuscript in the project root, then:
+### 3. Run the review phase
+
+Place a manuscript `.docx` in the repository root, then run:
 
 ```bash
 uv run crewai run
 ```
 
-### Step 2: Fix
+The review phase produces `report.md`.
+
+### 4. Run the correction phase
 
 ```bash
 uv run fix
 ```
 
-### Step 3: Import to Zotero (optional)
+The fix flow parses the review report, searches candidate literature, runs parallel verification/correction branches, and writes `corrections.md`.
+
+### 5. Optional Zotero import
 
 ```bash
 uv run python src/citation_review_crew/tools/zotero_import.py
 ```
 
-## Customization
+## Offline Tests
 
-- **Citation format**: Edit `src/citation_review_crew/config/tasks.yaml`
-- **Models**: Set `OPENAI_MODEL_NAME` and `OPENAI_MODEL_NAME_LIGHT` in `.env`
-- **Search APIs**: `scholar_search.py` supports openalex, semantic_scholar, pubmed, crossref
+The CI suite deliberately tests logic that does **not** require paid APIs, LLM credentials, or network access.
+
+```bash
+python -m pip install python-docx
+PYTHONPATH=src python -m unittest discover -s tests -v
+```
+
+Current offline coverage includes:
+
+- DOCX paragraph reading
+- citation-bearing paragraph filtering
+- chapter preservation
+- reference-section extraction
+
+GitHub Actions also compiles the complete `src/` tree and runs the unit tests on Python 3.10, 3.11, 3.12, and 3.13.
+
+## Repository Layout
+
+```text
+citation-review-crew/
+├── .github/workflows/ci.yml
+├── src/citation_review_crew/
+│   ├── config/
+│   ├── fix/
+│   │   └── flow.py
+│   ├── tools/
+│   │   ├── docx_reader.py
+│   │   ├── presearch.py
+│   │   ├── scholar_search.py
+│   │   ├── zotero_import.py
+│   │   └── zotero_tool.py
+│   ├── crew.py
+│   └── main.py
+├── tests/
+│   └── test_docx_reader.py
+├── .env.example
+├── pyproject.toml
+├── LICENSE
+└── README.md
+```
+
+## Limitations
+
+- Full review and correction runs depend on external APIs and LLM behavior; they are not equivalent to deterministic unit tests.
+- Candidate search quality is bounded by the coverage and metadata quality of the configured scholarly APIs.
+- A high-confidence automated suggestion should still be checked against the original paper before publication.
+- Citation-style rules are configurable and may require adaptation to a journal, university, or discipline-specific standard.
+- Reproducible end-to-end benchmark data is not yet published in this repository; performance claims should therefore be treated as unverified until a benchmark harness is added.
+
+## Roadmap
+
+- Add deterministic tests for report parsing and candidate pre-search formatting
+- Mock external scholarly APIs for integration tests
+- Add a reproducible benchmark corpus with precision/recall-style review metrics
+- Add structured JSON outputs alongside Markdown reports
+- Add versioned releases once the evaluation protocol is stable
 
 ## License
 
-MIT
+MIT License. See [LICENSE](LICENSE).
